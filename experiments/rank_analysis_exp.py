@@ -218,27 +218,33 @@ def plot_rank_analysis(mean_ranks, std_ranks, summary, output_dir):
     
     # 4. Budget分配对比
     ax4 = axes[1, 1]
-    total_budget = 100  # 假设总budget为100
+    total_budget = 1000  # 使用更大的budget让差异更明显
     
     # 计算不同策略的分配
-    allocator_prop = BudgetAllocator(strategy="proportional")
-    allocator_soft = BudgetAllocator(strategy="softmax", temperature=0.5)
+    allocator_prop = BudgetAllocator(strategy="proportional", min_budget=10)
+    allocator_power = BudgetAllocator(strategy="power", power=2.0, min_budget=10)  # 用power放大差异
     
     budgets_prop = allocator_prop.allocate(mean_ranks.tolist(), total_budget=total_budget).budgets
-    budgets_soft = allocator_soft.allocate(mean_ranks.tolist(), total_budget=total_budget).budgets
+    budgets_power = allocator_power.allocate(mean_ranks.tolist(), total_budget=total_budget).budgets
     budgets_uniform = [total_budget // num_layers] * num_layers
     
     x = np.arange(num_layers)
     width = 0.25
     
-    ax4.bar(x - width, budgets_uniform, width, label='Uniform', alpha=0.8)
-    ax4.bar(x, budgets_prop, width, label='Proportional', alpha=0.8)
-    ax4.bar(x + width, budgets_soft, width, label='Softmax', alpha=0.8)
+    ax4.bar(x - width, budgets_uniform, width, label='Uniform', alpha=0.8, color='gray')
+    ax4.bar(x, budgets_prop, width, label='RankKV (Prop)', alpha=0.8, color='steelblue')
+    ax4.bar(x + width, budgets_power, width, label='RankKV (Power)', alpha=0.8, color='coral')
     
     ax4.set_xlabel("Layer Index")
-    ax4.set_ylabel("Budget")
-    ax4.set_title("Budget Allocation Comparison")
+    ax4.set_ylabel("Budget (tokens)")
+    ax4.set_title(f"Budget Allocation Comparison (Total={total_budget})")
     ax4.legend()
+    
+    # 打印budget差异统计
+    print(f"\nBudget Allocation Statistics (total={total_budget}):")
+    print(f"  Uniform: all layers = {budgets_uniform[0]}")
+    print(f"  Proportional: range [{min(budgets_prop)}, {max(budgets_prop)}], ratio = {max(budgets_prop)/max(min(budgets_prop),1):.1f}x")
+    print(f"  Power(2.0): range [{min(budgets_power)}, {max(budgets_power)}], ratio = {max(budgets_power)/max(min(budgets_power),1):.1f}x")
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "figures", "rank_analysis.png"), dpi=150)
@@ -249,7 +255,7 @@ def plot_rank_analysis(mean_ranks, std_ranks, summary, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="RankKV - Effective Rank Analysis")
-    parser.add_argument("--model", type=str, default="EleutherAI/pythia-410m",
+    parser.add_argument("--model", type=str, default="EleutherAI/pythia-2.8b",
                        help="Model name or path")
     parser.add_argument("--dataset", type=str, default="wikitext",
                        choices=["wikitext", "pg19"], help="Dataset name")
