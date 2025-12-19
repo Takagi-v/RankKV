@@ -1,0 +1,60 @@
+# Build output
+bin/
+obj/
+out/
+build/
+dist/
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+node_modules/
+packages/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Compiled files
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# Test results
+TestResults/
+coverage/
+
+# NuGet
+*.nupkg
+.nuget/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.pyo
