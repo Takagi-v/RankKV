@@ -1,5 +1,8 @@
 import torch
 import torch.nn.functional as F
+import json
+import os
+
 
 def compute_effective_rank(matrix):
     """计算单个Attention矩阵的有效秩"""
@@ -73,3 +76,22 @@ def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0
     print(f">>> [RankKV] Budget Allocation Stats:")
     print(f"    Min: {min(final_budgets.values())}, Max: {max(final_budgets.values())}")
     return final_budgets
+
+def save_ranks(ranks, path):
+    """保存 Rank 数据到 JSON"""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # JSON key 必须是 str
+    data = {str(k): v for k, v in ranks.items()}
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=4)
+    print(f">>> [RankKV] Ranks saved to: {path}")
+
+def load_ranks(path):
+    """从 JSON 加载 Rank 数据"""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Rank file not found: {path}. Please run with RANK_MODE='dynamic' first.")
+    
+    with open(path, 'r') as f:
+        data = json.load(f)
+        # 恢复 key 为 int
+        return {int(k): v for k, v in data.items()}

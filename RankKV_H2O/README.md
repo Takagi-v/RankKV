@@ -60,4 +60,7 @@ results/
 ```
 文件夹下，如需改变缓存路径，可在/rankkv_h2o/config.py下进行修改
 
+**RANK_MODE**参数控制分配budget使用动态ranks还是静态ranks; 第一次跑先设置为“dynamic”生成初始的ranks.json文件.
+
 对于实验各参数，则需在相应的benchmark_*.py文件中修改
+

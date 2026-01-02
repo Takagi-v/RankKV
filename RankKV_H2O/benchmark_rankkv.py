@@ -2,6 +2,8 @@ import torch
 import pandas as pd
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from rankkv_h2o import config, patch, utils, strategy
+import os
+
 
 if __name__ == "__main__":
     print(f"Device: {config.DEVICE}")
@@ -14,6 +16,28 @@ if __name__ == "__main__":
     patch.enable_h2o_monkey_patch(model)
     
     long_text = utils.get_real_long_text()
+    
+    # ================ prepare ranks cache ================
+
+    ranks = {}
+    
+    if config.RANK_MODE == "dynamic":
+        print(f">>> [Mode: DYNAMIC] Profiling model ranks now...")
+        ranks = strategy.profile_model_ranks(model, tokenizer, long_text, model.device)
+        # 顺手存一份，方便下次用
+        strategy.save_ranks(ranks, config.STATIC_RANK_FILE)
+        
+    elif config.RANK_MODE == "static":
+        print(f">>> [Mode: STATIC] Loading ranks from {config.STATIC_RANK_FILE}...")
+        if os.path.exists(config.STATIC_RANK_FILE):
+            ranks = strategy.load_ranks(config.STATIC_RANK_FILE)
+        else:
+            # 自动降级处理：如果文件不存在，强制跑一次 dynamic
+            print(f"!!! Warning: Static file not found. Fallback to DYNAMIC profiling.")
+            ranks = strategy.profile_model_ranks(model, tokenizer, long_text, model.device)
+            strategy.save_ranks(ranks, config.STATIC_RANK_FILE)
+
+    # ================ loop experiment start ================
     
     budget_levels = [64, 128, 256, 512]
     results = []
@@ -33,10 +57,7 @@ if __name__ == "__main__":
         # --- 2. RankKV (使用 Rank) ---
         target_avg_budget = r + h
         
-        # A. Profiling (获取 Ranks)
-        ranks = strategy.profile_model_ranks(model, tokenizer, long_text, model.device)
-        
-        # B. Allocation (分配 Budgets)
+        # Allocation (分配 Budgets)
         config.LAYER_BUDGETS = strategy.allocate_budgets(
             ranks, 
             total_avg_budget=target_avg_budget, 
