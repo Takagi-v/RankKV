@@ -179,24 +179,28 @@ def run_analysis(
 def plot_rank_analysis(mean_ranks, std_ranks, summary, output_dir):
     """绘制有效秩分析图表"""
     num_layers = len(mean_ranks)
-    
-    # 设置风格
     plt.style.use('seaborn-v0_8-whitegrid')
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     
-    # 1. 柱状图：每层有效秩
-    ax1 = axes[0, 0]
+    # --- Figure 1: Rank Analysis (Bar + Line) ---
+    # User requested:
+    # 1. Line plot (Mean +/- Std)
+    # 2. Bar plot (Specific Rank values)
+    fig1, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 1. Bar Chart: Effective Rank per Layer
+    ax1 = axes[1] # Swapped order if preferred, but usually Bar is detailed. Let's put Bar on right or left.
+    # The user listed "Line plot" then "Bar chart" in comments, but usually we show them side by side.
     colors = plt.cm.coolwarm(np.linspace(0, 1, num_layers))
     bars = ax1.bar(range(num_layers), mean_ranks, yerr=std_ranks, 
                    color=colors, capsize=2, alpha=0.8)
     ax1.set_xlabel("Layer Index")
     ax1.set_ylabel("Effective Rank (Normalized)")
-    ax1.set_title("Effective Rank per Layer")
+    ax1.set_title("Effective Rank per Layer (Detailed)")
     ax1.axhline(y=mean_ranks.mean(), color='r', linestyle='--', label='Mean')
     ax1.legend()
     
-    # 2. 折线图：趋势
-    ax2 = axes[0, 1]
+    # 2. Line Chart: Trend (U-shape)
+    ax2 = axes[0]
     ax2.plot(range(num_layers), mean_ranks, 'b-o', markersize=4, label='Mean Rank')
     ax2.fill_between(range(num_layers), 
                      mean_ranks - std_ranks, 
@@ -204,53 +208,42 @@ def plot_rank_analysis(mean_ranks, std_ranks, summary, output_dir):
                      alpha=0.3)
     ax2.set_xlabel("Layer Index")
     ax2.set_ylabel("Effective Rank")
-    ax2.set_title("Effective Rank Trend")
+    ax2.set_title("Effective Rank Profile (U-Shape)")
     ax2.legend()
     
-    # 3. 直方图：秩分布
-    ax3 = axes[1, 0]
-    ax3.hist(mean_ranks, bins=20, color='steelblue', alpha=0.7, edgecolor='black')
-    ax3.axvline(x=mean_ranks.mean(), color='r', linestyle='--', label='Mean')
-    ax3.set_xlabel("Effective Rank")
-    ax3.set_ylabel("Count")
-    ax3.set_title("Distribution of Effective Ranks")
-    ax3.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "figures", "rank_analysis.pdf"))
+    plt.savefig(os.path.join(output_dir, "figures", "rank_analysis.png"), dpi=150)
+    plt.close()
+
+    # --- Figure 2: Budget Distribution ---
+    fig2, ax4 = plt.subplots(figsize=(10, 6))
+    total_budget = num_layers * 32 # Example budget
     
-    # 4. Budget分配对比
-    ax4 = axes[1, 1]
-    total_budget = 1000  # 使用更大的budget让差异更明显
-    
-    # 计算不同策略的分配
-    allocator_prop = BudgetAllocator(strategy="proportional", min_budget=10)
-    allocator_power = BudgetAllocator(strategy="power", power=2.0, min_budget=10)  # 用power放大差异
+    # Calculate allocations
+    allocator_prop = BudgetAllocator(strategy="proportional", min_budget=4)
+    # Using a higher power to make visual more distinct as per "RankKV (blue) adaptively allocates more tokens"
     
     budgets_prop = allocator_prop.allocate(mean_ranks.tolist(), total_budget=total_budget).budgets
-    budgets_power = allocator_power.allocate(mean_ranks.tolist(), total_budget=total_budget).budgets
     budgets_uniform = [total_budget // num_layers] * num_layers
     
     x = np.arange(num_layers)
-    width = 0.25
+    width = 0.4
     
-    ax4.bar(x - width, budgets_uniform, width, label='Uniform', alpha=0.8, color='gray')
-    ax4.bar(x, budgets_prop, width, label='RankKV (Prop)', alpha=0.8, color='steelblue')
-    ax4.bar(x + width, budgets_power, width, label='RankKV (Power)', alpha=0.8, color='coral')
+    ax4.bar(x - width/2, budgets_uniform, width, label='Uniform', alpha=0.6, color='gray')
+    ax4.bar(x + width/2, budgets_prop, width, label='RankKV', alpha=0.9, color='steelblue')
     
     ax4.set_xlabel("Layer Index")
     ax4.set_ylabel("Budget (tokens)")
-    ax4.set_title(f"Budget Allocation Comparison (Total={total_budget})")
+    ax4.set_title(f"Budget Allocation Strategy Comparison")
     ax4.legend()
     
-    # 打印budget差异统计
-    print(f"\nBudget Allocation Statistics (total={total_budget}):")
-    print(f"  Uniform: all layers = {budgets_uniform[0]}")
-    print(f"  Proportional: range [{min(budgets_prop)}, {max(budgets_prop)}], ratio = {max(budgets_prop)/max(min(budgets_prop),1):.1f}x")
-    print(f"  Power(2.0): range [{min(budgets_power)}, {max(budgets_power)}], ratio = {max(budgets_power)/max(min(budgets_power),1):.1f}x")
-    
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "figures", "rank_analysis.png"), dpi=150)
-    plt.savefig(os.path.join(output_dir, "figures", "rank_analysis.pdf"))
-    print(f"Figures saved to {output_dir}/figures/")
+    plt.savefig(os.path.join(output_dir, "figures", "budget_distribution.pdf"))
+    plt.savefig(os.path.join(output_dir, "figures", "budget_distribution.png"), dpi=150)
     plt.close()
+    
+    print(f"Figures saved to {output_dir}/figures/")
 
 
 def main():
