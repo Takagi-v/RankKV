@@ -2,14 +2,14 @@ import torch
 import torch.nn.functional as F
 import json
 import os
-
+from .config import gen_cfg
 
 def compute_effective_rank(matrix):
     """计算单个Attention矩阵的有效秩"""
     try:
         U, S, V = torch.svd(matrix.float())
     except:
-        return 1.0 # 兜底
+        return 1.0
     
     S_normalized = S / (S.sum() + 1e-10)
     entropy = -(S_normalized * torch.log(S_normalized + 1e-10)).sum()
@@ -20,8 +20,11 @@ def profile_model_ranks(model, tokenizer, calibration_text, device):
     """预运行一次以获取每层的有效秩"""
     print(">>> [RankKV] Profiling Effective Ranks...")
     inputs = tokenizer(calibration_text, return_tensors="pt").to(device)
-    if inputs.input_ids.shape[1] > 256:
-        inputs.input_ids = inputs.input_ids[:, :256]
+    
+    # 使用配置中的长度
+    calib_len = gen_cfg.calibration_len
+    if inputs.input_ids.shape[1] > calib_len:
+        inputs.input_ids = inputs.input_ids[:, :calib_len]
         
     rank_data = {}
     
@@ -80,7 +83,6 @@ def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0
 def save_ranks(ranks, path):
     """保存 Rank 数据到 JSON"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # JSON key 必须是 str
     data = {str(k): v for k, v in ranks.items()}
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
@@ -93,5 +95,4 @@ def load_ranks(path):
     
     with open(path, 'r') as f:
         data = json.load(f)
-        # 恢复 key 为 int
         return {int(k): v for k, v in data.items()}

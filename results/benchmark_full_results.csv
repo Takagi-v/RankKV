@@ -1,0 +1,2 @@
+Experiment,Budget,KV Size (GB),TPOT (ms),Throughput (T/s),PPL
+Dense (Full KV),Full Cache,1.15692138671875,51.360543351620436,19.470199003812716,8.2109375

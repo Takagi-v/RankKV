@@ -1,55 +1,52 @@
 import torch
 import pandas as pd
+import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from rankkv_h2o import config, patch, utils
+from rankkv_h2o import patch, utils
+from rankkv_h2o.config import system_cfg, gen_cfg, kv_state
 
 if __name__ == "__main__":
     # 1. Setup Environment
-    print(f"Device: {config.DEVICE}")
-    tokenizer = AutoTokenizer.from_pretrained(config.MODEL_ID, cache_dir=config.CACHE_DIR)
+    print(f"Device: {system_cfg.DEVICE}")
+    print(f"Model: {system_cfg.MODEL_ID}")
+    
+    # gen_cfg.min_new_tokens = 1024 
+    
+    tokenizer = AutoTokenizer.from_pretrained(system_cfg.MODEL_ID, cache_dir=system_cfg.CACHE_DIR)
     if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
     
     model = AutoModelForCausalLM.from_pretrained(
-        config.MODEL_ID, dtype=torch.float16, device_map="auto", cache_dir=config.CACHE_DIR
+        system_cfg.MODEL_ID, dtype=torch.float16, device_map="auto", cache_dir=system_cfg.CACHE_DIR
     )
     
-    # Inject logic to enable memory tracking (even for full attention)
+    # 即使是 Full KV 也需要注入 Patch，以便 utils.run_benchmark 能正常统计显存和运行
+    # 但因为 compression=False，它不会执行驱逐逻辑
     patch.enable_h2o_monkey_patch(model)
     
-    # Load test data
     long_text = utils.get_real_long_text()
-    print(f"Test Text Length: {len(tokenizer(long_text)['input_ids'][0])} tokens")
 
-    # 2. Define Experiment (Full / Dense)
-    # compress=False ensures no tokens are evicted
-    exp_dense = {
-        "name": "Dense (Full KV)", 
-        "compress": False, 
-        "r": 0, 
-        "h": 0
-    }
-
-    results = []
+    # 2. Configure State for Full KV
     print("\n>>> Starting Full KV Benchmark (Upper Bound)...\n")
     
-    # 3. Run Benchmark
-    # Reset any previous budgets (safety measure)
-    config.LAYER_BUDGETS = {} 
+    # 关闭压缩
+    kv_state.enable_compression = False
+    kv_state.reset_stats()
     
-    res = utils.run_benchmark(model, tokenizer, long_text, exp_dense)
+    results = []
+    
+    # 3. Run Benchmark
+    res = utils.run_benchmark(model, tokenizer, long_text, exp_label="Dense (Full KV)")
     results.append(res)
     
     print(f"   -> Done. PPL: {res['PPL']:.2f}")
 
     # 4. Save Results
-    import os
-
-    if not os.path.exists(config.OUTPUT_DIR):
-        os.makedirs(config.OUTPUT_DIR)
-        print(f"Created output directory: {config.OUTPUT_DIR}")
+    if not os.path.exists(system_cfg.OUTPUT_DIR):
+        os.makedirs(system_cfg.OUTPUT_DIR)
+        print(f"Created output directory: {system_cfg.OUTPUT_DIR}")
 
     save_filename = "benchmark_full_results.csv"
-    save_path = os.path.join(config.OUTPUT_DIR, save_filename)
+    save_path = os.path.join(system_cfg.OUTPUT_DIR, save_filename)
     
     df = pd.DataFrame(results)
     print("\n================ FINAL FULL KV RESULTS ================")
