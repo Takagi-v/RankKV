@@ -1,164 +1,114 @@
-# RankKV: 基于Attention矩阵有效秩的KV Cache压缩方法
+# RankKV: 基于Attention矩阵有效秩的KV Cache压缩框架
 
-## 项目简介
+RankKV 是一个**层级自适应的 KV Cache 压缩框架**。它基于一个核心观察：**不同层的 Attention 矩阵具有不同的"有效秩" (Effective Rank)**，这反映了该层对上下文信息的依赖程度。
 
-RankKV是一种基于Attention矩阵**有效秩(Effective Rank)**的**层级自适应KV Cache压缩方法**。
+RankKV 通过在 Prefill 阶段分析每一层的有效秩，**动态分配**每一层的 KV Cache 预算 (Budget)，并将这些预算应用到现有的主流压缩方法（如 SnapKV, H2O, PyramidKV）中，从而在不增加显存开销的前提下显著提升模型在长文本任务上的表现。
 
-### 核心观察
+---
 
-不同层的Attention矩阵具有不同的有效秩：
-- **有效秩低** → Attention分布集中 → 可激进压缩
-- **有效秩高** → Attention分布分散 → 需保守压缩
+## 🏗️ 项目架构
 
-### 方法概述
+RankKV 采用 **动态分析 + 实时注入** 的工作模式，分为两个阶段：
 
-1. 在Prefill阶段计算每层Attention矩阵的有效秩
-2. 根据有效秩为每层分配不同的KV Cache预算(Budget)
-3. 使用现有token selection方法（如SnapKV）执行压缩
+1.  **Phase 1: Dynamic Analysis (动态分析)**
+    - 在推理开始前（或首个batch），利用 `RankKVAnalyzer` 对输入样本的前 N 个 token 进行快速 Forward。
+    - 计算每一层的 Effective Rank。
+    - 使用 `BudgetAllocator` 为每一层分配个性化的 KV Cache 预算。
+    - **特点**: 每个输入样本（Input-Aware）都会得到其专属的最佳 Budget 分配方案。
 
-## 安装
+2.  **Phase 2: Execution (执行压缩)**
+    - 将动态计算出的 `LAYER_BUDGETS` 注入到下游压缩器（如 SnapKV/PyramidKV）。
+    - 启动标准推理流程，底层压缩器根据该 Budget 动态管理 KV Cache。
+
+目录结构如下：
+
+```text
+RankKV/
+├── rankkv/                 # [核心层] Brain: 分析与决策
+│   ├── rank_analysis.py    # 计算 Attention 矩阵的 Effective Rank
+│   └── budget_allocation.py# 策略算法 (Proportional, Softmax, Adaptive)
+│   └── pipeline.py         # RankKVAnalyzer: 串联分析与分配的枢纽
+│
+├── RankKV_Snap/            # [集成层] SnapKV Integration
+│   └── benchmark_rankkv_snap.py # 实现了上述 Phase 1 + Phase 2 的完整流程
+│
+├── RankKV_Pyramid/         # [集成层] PyramidKV Integration
+│   └── benchmark_rankkv_vs_standard.py
+│
+├── RankKV_H2O/             # [集成层] H2O Integration
+│
+└── benchmarks/             # [评测层] Unified Benchmarking
+    └── run_comprehensive.py# 一键运行所有评测并汇总报告
+```
+
+---
+
+## 🚀 快速开始
+
+### 1. 环境准备
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 快速开始
+### 2. 运行 Dynamic Benchmark
 
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from rankkv import RankKVAnalyzer, quick_analyze
+我们的 benchmark 脚本已经内置了动态分析逻辑，直接运行即可体验 **Effective Rank -> Dynamic Budget** 的全过程。
 
-# 加载模型
-model = AutoModelForCausalLM.from_pretrained("EleutherAI/pythia-2.8b")
-tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-2.8b")
+#### 运行 SnapKV 集成版
 
-# 准备输入
-text = "Your input text here..."
-input_ids = tokenizer(text, return_tensors="pt").input_ids
+```bash
+# 进入对应目录
+export PYTHONPATH=$PYTHONPATH:$(pwd)
 
-# 方式1：使用分析器
-analyzer = RankKVAnalyzer(model, model_name="pythia-2.8b")
-result = analyzer.analyze(input_ids, compression_ratio=0.3)
-
-print(result.summary())
-print(f"Layer budgets: {result.budgets}")
-print(f"Layer ranks: {result.layer_ranks}")
-
-# 方式2：快速分析
-budgets, ranks = quick_analyze(model, input_ids, compression_ratio=0.3)
+# 脚本会自动：
+# 1. 加载未经修改的模型进行 Phase 1 分析
+# 2. 计算出针对该输入的最佳 Budget
+# 3. 动态 Patch 模型并运行 Phase 2 压缩推理
+python RankKV_Snap/benchmark_rankkv_snap.py --budget 128
 ```
 
-## 核心模块
+#### 运行 PyramidKV 集成版
 
-### 1. 有效秩计算 (rank_analysis.py)
-
-```python
-from rankkv import compute_effective_rank, analyze_attention_ranks
-
-# 单个矩阵
-rank = compute_effective_rank(attention_matrix)
-
-# 分析所有层
-analysis = analyze_attention_ranks(model_attentions)
+```bash
+python RankKV_Pyramid/benchmark_rankkv_vs_standard.py --budget 128
 ```
 
-### 2. Budget分配 (budget_allocation.py)
+---
+
+## 🧩 核心模块详解
+
+### `RankKVAnalyzer` (pipeline.py)
+这是连接 Brain 和 Body 的核心 API。
 
 ```python
-from rankkv import BudgetAllocator
-
-# 创建分配器
-allocator = BudgetAllocator(
-    strategy="proportional",  # 或 "softmax", "adaptive", "power"
-    min_budget=4,
-)
-
-# 分配budget
-result = allocator.allocate(
-    layer_ranks=ranks,
-    total_budget=1000,
-)
-```
-
-### 3. 完整Pipeline (pipeline.py)
-
-```python
-from rankkv import RankKVAnalyzer
-
+# 初始化
 analyzer = RankKVAnalyzer(model)
-result = analyzer.analyze(input_ids, compression_ratio=0.3)
 
-# 获取结果供下游方法使用
-budgets = result.budgets      # 每层的budget
-ranks = result.layer_ranks    # 每层的有效秩
+# Phase 1: 动态分析
+# input_ids: 当前输入的 tokens
+# total_budget: 你希望的总显存预算
+analysis_result = analyzer.analyze(input_ids, total_budget=4096)
+
+# 获取分配结果
+layer_budgets = analysis_result.budgets 
+# e.g., [32, 32, 128, 512, 64, ...] -> 高秩层分得多，低秩层分得少
 ```
 
-## Budget分配策略
+### 接入下游方法
+我们通过全局变量注入或 MonkeyPatch 的方式，将 `layer_budgets` 传递给下游。
 
-| 策略 | 说明 |
-|------|------|
-| `proportional` | 按rank比例线性分配 |
-| `softmax` | 使用softmax(rank/temperature)分配 |
-| `adaptive` | 根据分位数分层处理 |
-| `power` | 使用rank^power分配 |
-
-## 运行实验
-
-### 低秩性分析实验
-
-```bash
-python experiments/rank_analysis_exp.py \
-    --model EleutherAI/pythia-2.8b \
-    --dataset wikitext \
-    --num_samples 10
-```
-
-### 测试
-
-```bash
-python tests/test_core.py
-```
-
-## 项目结构
-
-```
-rankkv/
-├── README.md
-├── requirements.txt
-├── rankkv/
-│   ├── __init__.py
-│   ├── rank_analysis.py      # 有效秩计算
-│   ├── budget_allocation.py  # Budget分配
-│   └── pipeline.py           # 完整Pipeline
-├── experiments/
-│   └── rank_analysis_exp.py  # 分析实验
-├── tests/
-│   └── test_core.py          # 核心测试
-└── results/
-    └── figures/
-```
-
-## 接入下游方法
-
-RankKV的输出（每层的budget）可以直接用于：
-- **SnapKV**: 修改其每层的token selection数量
-- **H2O**: 修改其每层的cache大小
-- **PyramidKV**: 替换其固定的金字塔分配
-
-示例：
 ```python
-# 获取RankKV的budget分配
-result = analyzer.analyze(input_ids, compression_ratio=0.3)
-budgets = result.budgets
-
-# 传递给下游方法
-# snapkv_compress(kv_cache, budgets=budgets)
-# h2o_compress(kv_cache, budgets=budgets)
+# 以 SnapKV 为例
+import snapkv.snapkv_utils as snapkv_utils
+snapkv_utils.LAYER_BUDGETS = {i: budget for i, budget in enumerate(layer_budgets)}
 ```
 
-## 参考文献
+---
 
-1. StreamingLLM: Efficient Streaming Language Models with Attention Sinks
-2. SnapKV: LLM Knows What You Are Looking For Before Generation
-3. PyramidKV: Dynamic KV Cache Compression based on Pyramidal Information Funneling
-4. Roy & Vetterli (2007): The Effective Rank: A Measure of Effective Dimensionality
+## 📚 参考文献
+
+1. **StreamingLLM**: Efficient Streaming Language Models with Attention Sinks
+2. **SnapKV**: LLM Knows What You Are Looking For Before Generation
+3. **PyramidKV**: Dynamic KV Cache Compression based on Pyramidal Information Funneling
+4. **H2O**: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models

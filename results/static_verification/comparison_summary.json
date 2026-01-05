@@ -1,0 +1,9 @@
+{
+  "num_samples": 10,
+  "avg_ppl_static": 12.074808727402408,
+  "avg_ppl_dynamic": 12.098005518369813,
+  "ppl_gap": -0.02319679096740579,
+  "avg_time_static_ms": 290.68520069122314,
+  "avg_time_dynamic_ms": 720.2001333236694,
+  "speedup": 2.4775947712890045
+}
