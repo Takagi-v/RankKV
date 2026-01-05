@@ -50,7 +50,7 @@ def profile_model_ranks(model, tokenizer, calibration_text, device):
     print(f"[RankKV] Ranks: {rank_data}")
     return rank_data
 
-def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0.5, inverse=False):
+def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0.3, inverse=False):
     """根据 Rank 分配 Budget"""
     rank_list = [ranks.get(i, 100.0) for i in range(num_layers)]
     ranks_tensor = torch.tensor(rank_list, dtype=torch.float32)
