@@ -46,7 +46,7 @@ def h2o_gpt_neox_attention_forward(
     
     current_limit = layer_budget
 
-    # 核心压缩逻辑
+    # Core Compress Logic
     if kv_state.enable_compression and q_len == 1 and seq_len > current_limit:
         
         fixed_recent = min(kv_state.recent_size, current_limit)
@@ -80,6 +80,7 @@ def h2o_gpt_neox_attention_forward(
             recent_indices = torch.arange(seq_len - fixed_recent, seq_len, device=key.device).expand(bsz, -1)
             kept_indices = torch.cat([heavy_indices, recent_indices], dim=-1)
             kept_indices, _ = kept_indices.sort(dim=-1)
+            kept_indices = kept_indices.clamp(min=0, max=seq_len - 1)
 
         if kept_indices is not None:
              # Helper to gather
@@ -92,8 +93,15 @@ def h2o_gpt_neox_attention_forward(
             
             # Update H2O Scores for next step
             if hasattr(layer_past, "h2o_scores"):
-                 idx_scores = kept_indices.unsqueeze(1).expand(-1, num_attention_heads, -1)
-                 layer_past.h2o_scores = torch.gather(layer_past.h2o_scores, 2, idx_scores)
+                if kept_indices.device != layer_past.h2o_scores.device:
+                    kept_indices = kept_indices.to(layer_past.h2o_scores.device)
+
+                # Safe check
+                current_score_len = layer_past.h2o_scores.shape[-1]
+                kept_indices = kept_indices.clamp(max=current_score_len - 1)
+                
+                idx_scores = kept_indices.unsqueeze(1).expand(-1, num_attention_heads, -1)
+                layer_past.h2o_scores = torch.gather(layer_past.h2o_scores, 2, idx_scores)
 
             # Update DynamicCache explicitly (Crucial for next steps)
             if isinstance(layer_past, (DynamicCache, Cache)):

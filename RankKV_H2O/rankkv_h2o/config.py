@@ -18,15 +18,13 @@ class SystemConfig:
 # ================= 2. Generation & Benchmark Settings =================
 @dataclass
 class GenerationConfig:
-    calibration_len: int = 512     # 计算Rank时的截断长度
-    benchmark_input_len: int = 512 # 测试TPOT时的输入截断长度
-    eval_ppl_len: int = 2048       # 计算PPL时的评估长度
+    calibration_len: int = 512     # Rank的截断长度
+    benchmark_input_len: int = 512 # TPOT的输入截断长度
+    eval_ppl_len: int = 2048       # PPL的评估长度
     
-    # 生成参数
     min_new_tokens: int = 1024
     max_new_tokens: int = 1024
     
-    # 数据集
     dummy_text_fallback: bool = True
 
 # ================= 3. Runtime Compression State (Singleton) =================
@@ -34,7 +32,7 @@ class GenerationConfig:
 class CompressionState:
     """
     这是一个运行时状态对象。
-    Benchmark 脚本会修改这里的值，Modeling (Monkey Patch) 会读取这里的值。
+    Benchmark 脚本会修改这里的值，Modeling 会读取这里的值。
     """
     enable_compression: bool = False
     rank_mode: str = "static"  # "dynamic" or "static"

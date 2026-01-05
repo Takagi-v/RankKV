@@ -37,7 +37,6 @@ if __name__ == "__main__":
         # --- State Management ---
         kv_state.enable_compression = do_compress
         
-        # 设置 H2O 参数
         kv_state.set_budget(recent=r, heavy=h, layer_map=None)
         
         # --- Run ---

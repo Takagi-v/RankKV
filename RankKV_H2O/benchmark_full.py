@@ -19,8 +19,6 @@ if __name__ == "__main__":
         system_cfg.MODEL_ID, dtype=torch.float16, device_map="auto", cache_dir=system_cfg.CACHE_DIR
     )
     
-    # 即使是 Full KV 也需要注入 Patch，以便 utils.run_benchmark 能正常统计显存和运行
-    # 但因为 compression=False，它不会执行驱逐逻辑
     patch.enable_h2o_monkey_patch(model)
     
     long_text = utils.get_real_long_text()
@@ -28,7 +26,6 @@ if __name__ == "__main__":
     # 2. Configure State for Full KV
     print("\n>>> Starting Full KV Benchmark (Upper Bound)...\n")
     
-    # 关闭压缩
     kv_state.enable_compression = False
     kv_state.reset_stats()
     

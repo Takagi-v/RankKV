@@ -14,8 +14,8 @@ if __name__ == "__main__":
     gen_cfg.max_new_tokens = 512
     gen_cfg.eval_ppl_len = 2048
     
-    BUDGET_LEVELS = [64, 128, 256, 512]
-    RANK_ALPHA = 0.3
+    BUDGET_LEVELS = 384
+    RANK_ALPHA = [-0.3, -0.2, 0.0, 0.3]
     MIN_LAYER_BUDGET = 32
     
     # ================ 2. Model Loading =================
@@ -49,7 +49,8 @@ if __name__ == "__main__":
     # ================ 4. Experiment Loop =================
     results = []
     
-    for budget in BUDGET_LEVELS:
+    for alpha in RANK_ALPHA:
+        budget = BUDGET_LEVELS
         r = budget // 2
         h = budget - r
         target_avg_budget = r + h
@@ -60,14 +61,14 @@ if __name__ == "__main__":
             total_avg_budget=target_avg_budget, 
             num_layers=len(model.gpt_neox.layers),
             min_budget=MIN_LAYER_BUDGET,
-            alpha=RANK_ALPHA
+            alpha=alpha
         )
         
         # 应用状态
         kv_state.enable_compression = True
         kv_state.set_budget(recent=r, heavy=h, layer_map=layer_budgets)
         
-        res_rankkv = utils.run_benchmark(model, tokenizer, long_text, exp_label=f"RankKV (B={budget})")
+        res_rankkv = utils.run_benchmark(model, tokenizer, long_text, exp_label=f"RankKV (a={alpha})")
         results.append(res_rankkv)
 
         print(f"   -> Done. PPL: {res_rankkv['PPL']:.2f}")
@@ -76,7 +77,7 @@ if __name__ == "__main__":
     if not os.path.exists(system_cfg.OUTPUT_DIR):
         os.makedirs(system_cfg.OUTPUT_DIR)
 
-    save_path = os.path.join(system_cfg.OUTPUT_DIR, "benchmark_rankkv_results.csv")
+    save_path = os.path.join(system_cfg.OUTPUT_DIR, "benchmark_rankkv_results_alpha.csv")
     df = pd.DataFrame(results)
     
     print("\n================ FINAL RESULTS ================")

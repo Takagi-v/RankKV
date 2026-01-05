@@ -23,8 +23,6 @@ def get_real_long_text(min_tokens=None):
 def run_benchmark(model, tokenizer, text, exp_label: str):
     """
     统一运行：显存、TPOT、PPL
-    注意：exp_config 字典被移除，改为直接读取当前的 kv_state，
-    调用者需要在外部先配置好 kv_state。
     """
     
     # 重置统计
@@ -39,7 +37,7 @@ def run_benchmark(model, tokenizer, text, exp_label: str):
     
     # 1. Speed Test
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
-    # 使用 gen_cfg 中的参数
+    
     trunc_len = gen_cfg.benchmark_input_len
     if inputs.input_ids.shape[1] > trunc_len:
         inputs.input_ids = inputs.input_ids[:, :trunc_len]

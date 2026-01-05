@@ -18,7 +18,7 @@ def compute_effective_rank(matrix):
 
 def profile_model_ranks(model, tokenizer, calibration_text, device):
     """预运行一次以获取每层的有效秩"""
-    print(">>> [RankKV] Profiling Effective Ranks...")
+    print("[RankKV] Profiling Effective Ranks...")
     inputs = tokenizer(calibration_text, return_tensors="pt").to(device)
     
     # 使用配置中的长度
@@ -47,7 +47,7 @@ def profile_model_ranks(model, tokenizer, calibration_text, device):
         
     for h in handles: h.remove()
     
-    print(f">>> [RankKV] Ranks: {rank_data}")
+    print(f"[RankKV] Ranks: {rank_data}")
     return rank_data
 
 def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0.5, inverse=False):
@@ -76,22 +76,22 @@ def allocate_budgets(ranks, total_avg_budget, num_layers, min_budget=64, alpha=0
     for i in range(num_layers):
         final_budgets[i] = budgets[i].item()
     
-    print(f">>> [RankKV] Budget Allocation Stats:")
-    print(f"    Min: {min(final_budgets.values())}, Max: {max(final_budgets.values())}")
+    print(f"[RankKV] Budget Allocation Stats:")
+    print(f"Min: {min(final_budgets.values())}, Max: {max(final_budgets.values())}")
     return final_budgets
 
 def save_ranks(ranks, path):
-    """保存 Rank 数据到 JSON"""
+    """保存 Rank 数据到 json文件"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     data = {str(k): v for k, v in ranks.items()}
     with open(path, 'w') as f:
         json.dump(data, f, indent=4)
-    print(f">>> [RankKV] Ranks saved to: {path}")
+    print(f"[RankKV] Ranks saved to: {path}")
 
 def load_ranks(path):
     """从 JSON 加载 Rank 数据"""
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Rank file not found: {path}. Please run with RANK_MODE='dynamic' first.")
+        raise FileNotFoundError(f"Rank file not found: {path}. Using Dynamic")
     
     with open(path, 'r') as f:
         data = json.load(f)
